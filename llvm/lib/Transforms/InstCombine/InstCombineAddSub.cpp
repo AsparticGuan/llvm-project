@@ -1348,7 +1348,22 @@ Instruction *InstCombinerImpl::foldAddLikeCommutative(Value *LHS, Value *RHS,
     return R;
   }
 
-  // ((X s/ C1) << C2) + X => X s% -C1 where -C1 is 1 << C2
+
+  // (X - Y) + select(C, 0, (Z - X)) --> select(C, X, Z) - Y
+  // (X - Y) + select(C, (Z - X), 0) --> select(C, Z, X) - Y
+  Value *Cond;
+  if (match(LHS, m_Sub(m_Value(A), m_Value(B)))) {
+    if (match(RHS, m_Select(m_Value(Cond), m_Zero(),
+                            m_Sub(m_Value(C), m_Specific(A))))) {
+      Value *NewSel = Builder.CreateSelect(Cond, A, C);
+      return BinaryOperator::CreateSub(NewSel, B);
+    }
+    if (match(RHS, m_Select(m_Value(Cond), m_Sub(m_Value(C), m_Specific(A)),
+                            m_Zero()))) {
+      Value *NewSel = Builder.CreateSelect(Cond, C, A);
+      return BinaryOperator::CreateSub(NewSel, B);
+    }
+  }
   const APInt *C1, *C2;
   if (match(LHS, m_Shl(m_SDiv(m_Specific(RHS), m_APInt(C1)), m_APInt(C2)))) {
     APInt One(C2->getBitWidth(), 1);
