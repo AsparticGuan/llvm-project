@@ -913,6 +913,13 @@ Instruction *InstCombinerImpl::foldAddWithConstant(BinaryOperator &Add) {
   if (!match(Op1, m_APInt(C)))
     return nullptr;
 
+  // (zext nneg (X + NarrowC)) + C --> zext X
+  // If the narrow add result is non-negative, a negative NarrowC did not wrap
+  // unsigned, so offsetting it by -NarrowC in the wide type recovers X.
+  const APInt *NarrowC;
+  if (match(Op0, m_OneUse(m_NNegZExt(m_AddLike(m_Value(X), m_APInt(NarrowC))))) &&
+      NarrowC->isNegative() && *C == -NarrowC->sext(C->getBitWidth()))
+    return new ZExtInst(X, Ty);
   // (X | Op01C) + Op1C --> X + (Op01C + Op1C) iff the `or` is actually an `add`
   Constant *Op01C;
   if (match(Op0, m_DisjointOr(m_Value(X), m_ImmConstant(Op01C)))) {
